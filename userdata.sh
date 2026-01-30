@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euxo pipefail
 
+echo "===== USER DATA STARTED ====="
+
 # -----------------------------
-# Basic system update
+# System update
 # -----------------------------
+dnf clean all
 dnf update -y
 
 # -----------------------------
@@ -13,57 +16,53 @@ dnf install -y docker
 systemctl enable docker
 systemctl start docker
 
-# -----------------------------
-# Remove Docker memory limits (IMPORTANT for Minikube)
-# -----------------------------
-mkdir -p /etc/systemd/system/docker.service.d
-
-cat <<EOF >/etc/systemd/system/docker.service.d/override.conf
-[Service]
-MemoryMax=infinity
-MemoryHigh=infinity
-EOF
-
-systemctl daemon-reexec
-systemctl daemon-reload
-systemctl restart docker
-
-# -----------------------------
-# Allow ec2-user to use Docker
-# -----------------------------
+# Allow ec2-user to use docker
 usermod -aG docker ec2-user
 
 # -----------------------------
-# Install kubectl (latest stable)
+# Install kubectl (generic stable)
 # -----------------------------
-K8S_VERSION=$(curl -Ls https://dl.k8s.io/release/stable.txt)
-curl -LO "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl"
-install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-rm -f kubectl
+curl -LO https://dl.k8s.io/release/stable.txt
+K8S_VERSION=$(cat stable.txt)
+curl -LO https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl
+chmod +x kubectl
+mv kubectl /usr/local/bin/
 
 # -----------------------------
 # Install Minikube
 # -----------------------------
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 install minikube-linux-amd64 /usr/local/bin/minikube
-rm -f minikube-linux-amd64
 
 # -----------------------------
-# Ensure correct permissions
+# Prepare Minikube startup script
 # -----------------------------
-chown -R ec2-user:ec2-user /home/ec2-user
+cat <<'EOF' > /home/ec2-user/start-minikube.sh
+#!/bin/bash
+set -eux
 
-# -----------------------------
-# Helpful message in MOTD
-# -----------------------------
-cat <<'EOF' >/etc/motd
+export HOME=/home/ec2-user
+export CHANGE_MINIKUBE_NONE_USER=true
 
-✅ Minikube prerequisites installed!
+# Ensure docker group is active
+newgrp docker <<EONG
+minikube start \
+  --driver=docker \
+  --memory=2500mb \
+  --cpus=2 \
+  --container-runtime=containerd
 
-Next steps (as ec2-user):
---------------------------------
-newgrp docker
-minikube start --driver=docker --memory=2560 --cpus=2
-
---------------------------------
+kubectl config use-context minikube
+kubectl get nodes
+EONG
 EOF
+
+chmod +x /home/ec2-user/start-minikube.sh
+chown ec2-user:ec2-user /home/ec2-user/start-minikube.sh
+
+# -----------------------------
+# Start Minikube as ec2-user
+# -----------------------------
+sudo -u ec2-user bash /home/ec2-user/start-minikube.sh
+minikube start --driver=docker
+echo "===== USER DATA COMPLETED ====="
