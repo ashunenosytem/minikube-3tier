@@ -1,0 +1,9 @@
+# Install socat tool
+sudo dnf install -y socat
+
+# Create the bridge (this must stay running)
+sudo socat TCP-LISTEN:30080,fork,reuseaddr TCP:$(minikube ip):30080 &
+
+minikube addons enable ingress
+
+sudo socat TCP-LISTEN:80,fork,reuseaddr TCP:192.168.49.2:80

@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: mongodb
+  name: frontend
   namespace: expense-app
 spec:
   selector:
-    app: mongodb
+    app: frontend
   ports:
-    - port: 27017
-      targetPort: 27017
+    - port: 80
+      targetPort: 80
